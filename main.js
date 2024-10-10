@@ -1,13 +1,16 @@
+// Constants and Variables
+const WEEK_DAYS = 7;
 let timer;
 let timeLeft;
 let totalTime;
 let isFocusMode = true;
 let isRunning = false;
 let todayMinutes = 0;
-let alertAudio;
 let startTime;
-let lastMinuteChecked = 0;  // New variable to track the last minute we checked
+let lastMinuteChecked = 0;
+let alertAudio;  
 
+// DOM Elements
 const timerDisplay = document.querySelector('.timer');
 const modeDisplay = document.querySelector('.mode');
 const startStopButton = document.getElementById('startStop');
@@ -15,21 +18,27 @@ const resetButton = document.getElementById('reset');
 const focusTimeInput = document.getElementById('focusTime');
 const breakTimeInput = document.getElementById('breakTime');
 const historyTable = document.getElementById('history');
-const progressCircle = document.querySelector('.timer-progress');
 const notesInput = document.getElementById('notes');
 const saveNotesButton = document.getElementById('saveNotes');
 const clearDataButton = document.getElementById('clearData');
 
-// Load audio on page load
-document.addEventListener('DOMContentLoaded', () => {
-    alertAudio = new Audio('alert.mp3');  // Make sure the path to the mp3 file is correct
-});
+// Initialize
+document.addEventListener('DOMContentLoaded', initialize);
 
+function initialize() {
+    alertAudio = new Audio('alert.mp3');  // Load the alert sound
+    loadState();
+    updateTimerDisplay();
+    updateHistoryTable();
+    checkAndAddNewDay();
+}
+
+// Timer Functions
 function startTimer() {
     if (!isRunning) {
         isRunning = true;
         startStopButton.textContent = 'PAUSE';
-        startTime = Date.now();  
+        startTime = Date.now() - (totalTime - timeLeft) * 1000;
         timer = setInterval(updateTimer, 1000);
     } else {
         isRunning = false;
@@ -39,71 +48,71 @@ function startTimer() {
     saveState();
 }
 
+function clearAllData() {
+    if (confirm("هل أنت متأكد أنك تريد مسح جميع البيانات؟ لا يمكن التراجع عن هذا الإجراء.")) {
+        localStorage.removeItem('pomodoroHistory');
+        localStorage.removeItem('pomodoroState');
+        todayMinutes = 0;
+        lastMinuteChecked = 0;
+        notesInput.value = '';
+        setInitialTime();
+        updateHistoryTable();
+        saveState();
+        alert('تم مسح جميع البيانات بنجاح.');
+    }
+}
+
 function resetTimer() {
     clearInterval(timer);
     isRunning = false;
     startStopButton.textContent = 'START';
     setInitialTime();
+    lastMinuteChecked = 0;
     saveState();
 }
 
 function setInitialTime() {
-    clearInterval(timer);
-    isRunning = false;
-    startStopButton.textContent = 'START';
-    
-    if (isFocusMode) {
-        timeLeft = focusTimeInput.value * 60;
-        totalTime = timeLeft;
-        modeDisplay.textContent = 'FOCUS';
-    } else {
-        timeLeft = breakTimeInput.value * 60;
-        totalTime = timeLeft;
-        modeDisplay.textContent = 'BREAK';
-    }
-    
+    timeLeft = (isFocusMode ? focusTimeInput.value : breakTimeInput.value) * 60;
+    totalTime = timeLeft;
+    modeDisplay.textContent = isFocusMode ? 'FOCUS' : 'BREAK';
     updateTimerDisplay();
-    updateProgressCircle();
-    saveState();
 }
 
 function updateTimer() {
-    const currentTime = Date.now();
-    const elapsedTime = Math.floor((currentTime - startTime) / 1000);  
-    const newTimeLeft = totalTime - elapsedTime;
-    
-    if (newTimeLeft > 0) {
-        timeLeft = newTimeLeft;
-        updateTimerDisplay();
-        updateProgressCircle();
-        
-        // Check if we've entered a new minute
+    const now = Date.now();
+    const elapsed = Math.floor((now - startTime) / 1000);
+    timeLeft = Math.max(totalTime - elapsed, 0);
+
+    if (isFocusMode) {
         const currentMinute = Math.floor((totalTime - timeLeft) / 60);
-        if (isFocusMode && currentMinute > lastMinuteChecked) {
+        if (currentMinute > lastMinuteChecked) {
             todayMinutes += currentMinute - lastMinuteChecked;
             lastMinuteChecked = currentMinute;
-            updateHistoryTable();
             saveState();
+            updateHistoryTable();
         }
-    } else {
+    }
+
+    if (timeLeft === 0) {
         clearInterval(timer);
         if (isFocusMode) {
-            // Add any remaining seconds as a fraction of a minute
-            const remainingSeconds = totalTime % 60;
-            todayMinutes += remainingSeconds / 60;
-            addToHistory();
+            todayMinutes += (totalTime % 60) / 60;
+            saveState();
+            updateHistoryTable();
         }
-        playAlertSound();
+        playAlertSound();  // Play sound when timer finishes
         isFocusMode = !isFocusMode;
         setInitialTime();
         isRunning = false;
         startStopButton.textContent = 'START';
-        lastMinuteChecked = 0;  // Reset for the next session
+        lastMinuteChecked = 0;
     }
+
+    updateTimerDisplay();
 }
 
 function playAlertSound() {
-    alertAudio.play();  // Play the mp3 file when the timer finishes
+    alertAudio.play();  // Play the alert sound
 }
 
 function updateTimerDisplay() {
@@ -112,92 +121,7 @@ function updateTimerDisplay() {
     timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function updateProgressCircle() {
-    const progress = ((totalTime - timeLeft) / totalTime) * 100;
-    progressCircle.style.setProperty('--progress', `${progress}%`);
-}
-
-function addToHistory() {
-    const today = new Date().toLocaleDateString('en-CA');
-    let historyData = JSON.parse(localStorage.getItem('pomodoroHistory')) || [];
-    let todayEntry = historyData.find(entry => entry.date === today);
-    
-    if (todayEntry) {
-        todayEntry.minutes = parseFloat(todayEntry.minutes) + parseFloat(todayMinutes);
-        todayEntry.notes = notesInput.value;
-    } else {
-        historyData.push({ date: today, minutes: parseFloat(todayMinutes), notes: notesInput.value });
-    }
-
-    // Keep only the last 7 days of data
-    historyData = historyData.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 7);
-
-    localStorage.setItem('pomodoroHistory', JSON.stringify(historyData));
-    updateHistoryTable();
-}
-
-function updateHistoryTable() {
-    const historyData = JSON.parse(localStorage.getItem('pomodoroHistory')) || [];
-    const today = new Date().toLocaleDateString('en-CA');
-    historyTable.innerHTML = '<tr><th>Date</th><th>Minutes Completed</th><th>Notes</th></tr>';
-    
-    // Sort the history data by date in descending order
-    historyData.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    // Add today's entry first
-    const todayRow = historyTable.insertRow(1);
-    todayRow.insertCell(0).textContent = today;
-    todayRow.insertCell(1).textContent = todayMinutes.toFixed(2);  // Display with 2 decimal places
-    const todayNotesCell = todayRow.insertCell(2);
-    todayNotesCell.textContent = notesInput.value;
-
-    // Add previous days
-    historyData.forEach(entry => {
-        if (entry.date !== today) {
-            const row = historyTable.insertRow(-1);
-            row.insertCell(0).textContent = entry.date;
-            row.insertCell(1).textContent = parseFloat(entry.minutes).toFixed(2);  // Display with 2 decimal places
-            row.insertCell(2).textContent = entry.notes;
-        }
-    });
-}
-
-function saveNotes() {
-    addToHistory();
-    alert('Notes saved successfully!');
-    saveState();
-}
-
-function checkDateChange() {
-    const today = new Date().toLocaleDateString('en-CA');
-    const lastDate = localStorage.getItem('lastDate');
-    
-    if (lastDate && lastDate !== today) {
-        addToHistory(); 
-        todayMinutes = 0; 
-        notesInput.value = ''; 
-        timeLeft = 0; 
-        isRunning = false; 
-        updateTimerDisplay();
-        updateProgressCircle();
-        startStopButton.textContent = 'START';
-    }
-    
-    localStorage.setItem('lastDate', today);
-}
-
-function clearAllData() {
-    if (confirm("Are you sure you want to clear all data? This action cannot be undone.")) {
-        localStorage.removeItem('pomodoroHistory');
-        localStorage.removeItem('lastDate');
-        localStorage.removeItem('pomodoroState');
-        todayMinutes = 0;
-        notesInput.value = '';
-        updateHistoryTable();
-        setInitialTime();
-    }
-}
-
+// State Management
 function saveState() {
     const state = {
         timeLeft,
@@ -207,41 +131,87 @@ function saveState() {
         todayMinutes,
         focusTime: focusTimeInput.value,
         breakTime: breakTimeInput.value,
-        notes: notesInput.value,
-        date: new Date().toLocaleDateString('en-CA')
+        startTime: startTime,
+        lastUpdate: Date.now(),
+        lastMinuteChecked
     };
     localStorage.setItem('pomodoroState', JSON.stringify(state));
 }
 
 function loadState() {
     const savedState = JSON.parse(localStorage.getItem('pomodoroState'));
-    const today = new Date().toLocaleDateString('en-CA');
-    
-    if (savedState && savedState.date === today) {
-        timeLeft = savedState.timeLeft;
-        totalTime = savedState.totalTime;
-        isFocusMode = savedState.isFocusMode;
-        isRunning = savedState.isRunning;
-        todayMinutes = savedState.todayMinutes;
+    if (savedState) {
+        ({timeLeft, totalTime, isFocusMode, isRunning, todayMinutes, startTime, lastMinuteChecked} = savedState);
         focusTimeInput.value = savedState.focusTime;
         breakTimeInput.value = savedState.breakTime;
-        notesInput.value = savedState.notes;
-
-        updateTimerDisplay();
-        updateProgressCircle();
-        modeDisplay.textContent = isFocusMode ? 'FOCUS' : 'BREAK';
-        startStopButton.textContent = isRunning ? 'PAUSE' : 'START';
         
         if (isRunning) {
-            timer = setInterval(updateTimer, 1000);
+            const now = Date.now();
+            const elapsed = Math.floor((now - startTime) / 1000);
+            timeLeft = Math.max(totalTime - elapsed, 0);
+            if (timeLeft > 0) {
+                timer = setInterval(updateTimer, 1000);
+            } else {
+                isRunning = false;
+            }
         }
+        
+        modeDisplay.textContent = isFocusMode ? 'FOCUS' : 'BREAK';
+        startStopButton.textContent = isRunning ? 'PAUSE' : 'START';
     } else {
-        todayMinutes = 0;
-        notesInput.value = '';
         setInitialTime();
     }
 }
 
+// History Management
+function updateHistoryTable() {
+    let history = JSON.parse(localStorage.getItem('pomodoroHistory')) || [];
+    historyTable.innerHTML = '<tr><th>Date</th><th>Minute Completed</th><th>Note</th></tr>';
+    
+    history.forEach(entry => {
+        const row = historyTable.insertRow(-1);
+        row.insertCell(0).textContent = entry.date;
+        row.insertCell(1).textContent = entry.minutes.toFixed(2);
+        row.insertCell(2).textContent = entry.notes;
+    });
+
+    if (history.length > 0) {
+        history[0].minutes = todayMinutes;
+        localStorage.setItem('pomodoroHistory', JSON.stringify(history));
+        historyTable.rows[1].cells[1].textContent = todayMinutes.toFixed(2);
+    }
+}
+
+function checkAndAddNewDay() {
+    const today = new Date().toLocaleDateString('en-CA');
+    let history = JSON.parse(localStorage.getItem('pomodoroHistory')) || [];
+    
+    if (history.length === 0 || history[0].date !== today) {
+        history.unshift({date: today, minutes: 0, notes: ''});
+        if (history.length > WEEK_DAYS) {
+            history = history.slice(0, WEEK_DAYS);
+        }
+        localStorage.setItem('pomodoroHistory', JSON.stringify(history));
+        todayMinutes = 0;
+        lastMinuteChecked = 0;
+        saveState();
+        updateHistoryTable();
+    }
+}
+
+function saveNotes() {
+    const notes = notesInput.value;
+    let history = JSON.parse(localStorage.getItem('pomodoroHistory')) || [];
+    if (history.length > 0) {
+        history[0].notes = notes;
+        history[0].minutes = todayMinutes;
+        localStorage.setItem('pomodoroHistory', JSON.stringify(history));
+        updateHistoryTable();
+    }
+    alert('Notes saved successfully!');
+}
+
+// Event Listeners
 startStopButton.addEventListener('click', startTimer);
 resetButton.addEventListener('click', resetTimer);
 focusTimeInput.addEventListener('change', setInitialTime);
@@ -249,6 +219,5 @@ breakTimeInput.addEventListener('change', setInitialTime);
 saveNotesButton.addEventListener('click', saveNotes);
 clearDataButton.addEventListener('click', clearAllData);
 
-checkDateChange();
-loadState();
-updateHistoryTable();
+// Check for new day every minute
+setInterval(checkAndAddNewDay, 60000);
