@@ -20,8 +20,9 @@ const notesInput = document.getElementById('notes');
 const saveNotesButton = document.getElementById('saveNotes');
 const clearDataButton = document.getElementById('clearData');
 
+// Load audio on page load
 document.addEventListener('DOMContentLoaded', () => {
-    alertAudio = new Audio('../Media/alert.mp3');
+    alertAudio = new Audio('alert.mp3');  // Make sure the path to the mp3 file is correct
 });
 
 function startTimer() {
@@ -102,7 +103,7 @@ function updateTimer() {
 }
 
 function playAlertSound() {
-    alertAudio.play();
+    alertAudio.play();  // Play the mp3 file when the timer finishes
 }
 
 function updateTimerDisplay() {
